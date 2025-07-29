@@ -24,7 +24,7 @@ namespace InMemoryCachingExecution.Controllers
 
         // Retrieves all countries.
         // GET: api/location/countries
-        [HttpGet("conutries")]
+        [HttpGet("countries")]
         public async Task<ActionResult<IEnumerable<Country>>> GetCountries()
         {
             List<Country> countries = await _locationRepository.GetAllCountriesAsync();

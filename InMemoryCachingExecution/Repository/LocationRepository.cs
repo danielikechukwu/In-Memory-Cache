@@ -1,7 +1,9 @@
 ﻿using InMemoryCachingExecution.Data;
 using InMemoryCachingExecution.Models;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using System.Runtime.CompilerServices;
 
 namespace InMemoryCachingExecution.Repository
 {
@@ -24,6 +26,7 @@ namespace InMemoryCachingExecution.Repository
         }
 
         // Retrieves all countries from the database, with caching.
+        // 1. Manual Eviction for Countries (Caching implementation)
         public async Task<List<Country>> GetAllCountriesAsync()
         {
 
@@ -34,12 +37,16 @@ namespace InMemoryCachingExecution.Repository
             if (!_cache.TryGetValue(cacheKey, out List<Country>? countries))
             {
                 // If not found in cache, fetch from the database.
-                countries = await _context.Countries
+                countries = await _context.Countries   
+                    .Include(c => c.States)
+                        .ThenInclude(s => s.cities) // Include cities for each state
                     .AsNoTracking() // Improves performance for read-only queries
                     .ToListAsync();
 
-                // Set the cache with the fetched data and expiration time.
-                _cache.Set("countries", countries, _cacheExpiration);
+                // Set the cache with the fetched data.
+                // Manual eviction means: do not set any expiration time
+                // _cache.Set(cacheKey, countries, _cacheExpiration); // with expiration
+                _cache.Set("countries", countries); // without expiration
             }
 
             // Returns the cached or fresh data.
@@ -47,7 +54,28 @@ namespace InMemoryCachingExecution.Repository
 
         }
 
+        // Method to remove countries from the cache manually
+        public void RemoveCountriesFromCache()
+        {
+            var cacheKey = "countries";
+
+            // Remove the cached countries data
+            _cache.Remove(cacheKey);
+        }
+
+        // Add a Country and then clear the cache
+        public async Task AddCountry(Country country)
+        {
+            _context.Countries.Add(country);
+
+            await _context.SaveChangesAsync();
+
+            RemoveCountriesFromCache();
+
+        }
+
         // Retrieves all states from the database, with caching.
+        // 2. Sliding Expiration for States
         public async Task<List<State>> GetAllStatesAsync(int countryId)
         {
 
@@ -60,11 +88,15 @@ namespace InMemoryCachingExecution.Repository
                 // If not found in cache, fetch from the database.
                 states = await _context.States
                     .Where(s => s.CountryId == countryId) // Filter states by country ID
+                    .Include(s => s.cities) // Include cities for each state
                     .AsNoTracking() // Improves performance for read-only queries
                     .ToListAsync();
 
+                // Configure sliding expiration
+                var cacheEntryOptions = new MemoryCacheEntryOptions().SetSlidingExpiration(TimeSpan.FromSeconds(10));
+
                 // Set the cache with the fetched data and expiration time.
-                _cache.Set(cacheKey, states, _cacheExpiration);
+                _cache.Set(cacheKey, states, cacheEntryOptions);
             }
 
             // Returns the cached or fresh data.
@@ -72,6 +104,7 @@ namespace InMemoryCachingExecution.Repository
         }
 
         // Retrieves the list of cities for a specific state, with caching.
+        // 3. Absolute Expiration for Cities
         public async Task<List<City>> GetCitiesByStateAsync(int stateId)
         {
             // Unique cache key for cities based on state ID.
@@ -87,8 +120,11 @@ namespace InMemoryCachingExecution.Repository
                     .AsNoTracking() // Improves performance for read-only queries
                     .ToListAsync();
 
+                // Configure absolute expiration
+                var cacheEntryOptions = new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromSeconds(10));
+
                 // Set the cache with the fetched data and expiration time.
-                _cache.Set(cacheKey, cities, _cacheExpiration);
+                _cache.Set(cacheKey, cities, cacheEntryOptions);
             }
             
             // Returns the cached or fresh data.
