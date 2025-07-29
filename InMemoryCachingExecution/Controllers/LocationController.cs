@@ -38,6 +38,33 @@ namespace InMemoryCachingExecution.Controllers
 
         }
 
+        //Add a New Country
+        [HttpPost("countries")]
+        public async Task<IActionResult> AddCountry([FromBody] Country country)
+        {
+
+            try
+            {
+                await _locationRepository.AddCountry(country);
+
+                return Ok(); // Indicates success with No Data to Return
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError("An error occurred upon creation: {ex}", ex.Message);
+
+                var customResponse = new
+                {
+                    Code = 500,
+                    Message = "Internal Server Error",
+                    // Do not expose the actual error to the client
+                    ErrorMessage = ex.Message
+                };
+
+                return StatusCode(StatusCodes.Status500InternalServerError, customResponse);
+            }
+        }
+
         // Retrieves states by country ID.
         // GET: api/location/states/{countryId}
         [HttpGet("states/{countryId}")]
