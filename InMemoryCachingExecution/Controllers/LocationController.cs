@@ -27,14 +27,23 @@ namespace InMemoryCachingExecution.Controllers
         [HttpGet("countries")]
         public async Task<ActionResult<IEnumerable<Country>>> GetCountries()
         {
-            List<Country> countries = await _locationRepository.GetAllCountriesAsync();
-
-            if (countries == null || !countries.Any())
+            try
             {
-                return NotFound("No countries found.");
-            }
+                List<Country> countries = await _locationRepository.GetAllCountriesAsync();
 
-            return Ok(countries);
+                if (countries == null || !countries.Any())
+                {
+                    return NotFound("No countries found.");
+                }
+
+                return Ok(countries);
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError("An error occurred while retrieving countries: {ex}", ex.Message);
+
+                return StatusCode(StatusCodes.Status500InternalServerError);
+            }
 
         }
 
@@ -49,7 +58,7 @@ namespace InMemoryCachingExecution.Controllers
 
                 return Ok(); // Indicates success with No Data to Return
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 _logger.LogError("An error occurred upon creation: {ex}", ex.Message);
 
@@ -62,6 +71,43 @@ namespace InMemoryCachingExecution.Controllers
                 };
 
                 return StatusCode(StatusCodes.Status500InternalServerError, customResponse);
+            }
+        }
+
+        //Update Country By Id
+        [HttpPut("countries/{id}")]
+        public async Task<IActionResult> UpdateCountry(int id, [FromBody] Country country)
+        {
+            if (id != country.CountryId)
+            {
+                return BadRequest("Country ID mismatch.");
+            }
+            try
+            {
+                await _locationRepository.UpdateCountry(country);
+
+                return NoContent(); // Indicates success with No Data to Return
+            }
+            catch (Exception ex)
+            {
+                if (!CountryExists(id))
+                {
+                    return NotFound($"Country with ID {id} not found.");
+                }
+                else
+                {
+                    _logger.LogError("An error occurred upon update: {ex}", ex.Message);
+
+                    var customResponse = new
+                    {
+                        Code = 500,
+                        Message = "Internal Server Error",
+                        // Do not expose the actual error to the client         
+                        ErrorMessage = ex.Message
+                    };
+
+                    return StatusCode(StatusCodes.Status500InternalServerError, customResponse);
+                }
             }
         }
 
@@ -94,5 +140,11 @@ namespace InMemoryCachingExecution.Controllers
 
             return Ok(cities);
         }
+
+        private bool CountryExists(int id)
+        {
+            return _locationRepository.GetAllCountriesAsync().Result.Any(e => e.CountryId == id);
+        }
+
     }
 }

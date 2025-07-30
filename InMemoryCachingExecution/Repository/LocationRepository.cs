@@ -37,9 +37,7 @@ namespace InMemoryCachingExecution.Repository
             if (!_cache.TryGetValue(cacheKey, out List<Country>? countries))
             {
                 // If not found in cache, fetch from the database.
-                countries = await _context.Countries   
-                    .Include(c => c.States)
-                        .ThenInclude(s => s.cities) // Include cities for each state
+                countries = await _context.Countries
                     .AsNoTracking() // Improves performance for read-only queries
                     .ToListAsync();
 
@@ -74,6 +72,17 @@ namespace InMemoryCachingExecution.Repository
 
         }
 
+        // Update a Country and then clear the cache
+        public async Task UpdateCountry(Country updateCountry)
+        {
+            _context.Countries.Update(updateCountry);
+
+            await _context.SaveChangesAsync();
+
+            RemoveCountriesFromCache();
+
+        }
+
         // Retrieves all states from the database, with caching.
         // 2. Sliding Expiration for States
         public async Task<List<State>> GetAllStatesAsync(int countryId)
@@ -88,7 +97,6 @@ namespace InMemoryCachingExecution.Repository
                 // If not found in cache, fetch from the database.
                 states = await _context.States
                     .Where(s => s.CountryId == countryId) // Filter states by country ID
-                    .Include(s => s.cities) // Include cities for each state
                     .AsNoTracking() // Improves performance for read-only queries
                     .ToListAsync();
 
