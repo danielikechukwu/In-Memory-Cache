@@ -26,6 +26,8 @@ namespace InMemoryCachingExecution.Controllers
             _memoryCache = memoryCache;
         }
 
+        // Retrieves all active cache entries with their keys and values.
+        // GET /api/cache/all
         [HttpGet("All")]
         public IActionResult GetAllCacheKeys()
         {
@@ -51,6 +53,70 @@ namespace InMemoryCachingExecution.Controllers
 
             // Return the list of cache entries.
             return Ok(cacheEntries);
+        }
+
+        // TODO: Implement a method to clear all cache entries.
+        // Retrieves a specific key's value
+        // GET /api/cache/{key}
+        [HttpGet("{key}")]
+        public IActionResult GetCacheEntry(string key)
+        {
+            // Try to get the value from the cache.
+            if (_memoryCache.TryGetValue(key, out object? value))
+            {
+                return Ok(new { Key = key, Value = value });
+            }
+
+            // If not found, return a NotFound result.
+            return NotFound(new { Message = $"Cache key '{key}' not found"});
+        }
+
+        // Clears ALL cache entries
+        // DELETE /api/cache/clearall
+        [HttpDelete("ClearAll")]
+        public IActionResult ClearAllCache()
+        {
+            try
+            {
+                // Clear all cache entries using the CacheManager.
+                _cacheManager.ClearCache();
+
+                return Ok(new { Message = "All cache entries cleared." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("An error occurred while clearing cache: {ex}", ex.Message);
+
+                return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "Failed to clear cache." });
+            }
+        }
+
+        // Clears a specific cache entry
+        // DELETE /api/cache/{key}
+        [HttpDelete("{key}")]
+        public IActionResult ClearCacheByKey(string key)
+        {
+            try
+            {
+                // Check 
+                if (_cacheManager.GetAllKeys().Contains(key))
+                {
+                    // Remove the specific cache entry using the CacheManager.
+                    _cacheManager.Remove(key);
+
+                    return Ok(new { Message = $"Cache entry '{key}' cleared." });
+                }
+                else
+                {
+                    return NotFound(new { Message = $"Cache key '{key}' not found." });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError("An error occurred while clearing cache entry '{key}': {ex}", key, ex.Message);
+
+                return StatusCode(StatusCodes.Status500InternalServerError, new { Message = $"Failed to clear cache entry '{key}'." });
+            }
         }
 
 
