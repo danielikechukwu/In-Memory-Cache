@@ -1,5 +1,6 @@
 using InMemoryCachingExecution.Data;
 using InMemoryCachingExecution.Repository;
+using InMemoryCachingExecution.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +21,12 @@ builder.Services.AddMemoryCache();
 
 //Register LocationRepository as a Scoped Service
 builder.Services.AddScoped<LocationRepository>();
+
+builder.Services.AddScoped<CustomLocationRepository>();
+
+// Register the custom CacheManager as a Singleton
+// because it should manage keys and cache entries globally within the application.
+builder.Services.AddSingleton<CacheManager>();
 
 var app = builder.Build();
 

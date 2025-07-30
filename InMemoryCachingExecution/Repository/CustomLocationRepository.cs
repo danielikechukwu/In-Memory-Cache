@@ -1,28 +1,40 @@
 ﻿using InMemoryCachingExecution.Data;
 using InMemoryCachingExecution.Models;
-using Microsoft.AspNetCore.Mvc;
+using InMemoryCachingExecution.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
-using System.Runtime.CompilerServices;
 
 namespace InMemoryCachingExecution.Repository
 {
-    public class LocationRepository
+    public class CustomLocationRepository
     {
         // InMemoryCachingDbContext instance for interacting with the database.
         private readonly InMemoryCachingDbContext _context;
 
-        // IMemoryCache instance for implementing in-memory caching.
-        private readonly IMemoryCache _cache;
+        // Custom cache manager to handle caching.
+        private readonly CacheManager _cache;
+
+        // Cache expiration duration.
+        private readonly int _CacheAbsoluteDurationMinutes;
+        private readonly int _CacheSlidingDurationMinutes;
+
+        // Configuration for reading settings from appsettings.json.
+        private readonly IConfiguration _configuration;
 
         // Cache expiration time set to 30 minutes.
         private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(30);
 
         // Constructor that accepts InMemoryCachingDbContext and IMemoryCache instances.
-        public LocationRepository(InMemoryCachingDbContext context, IMemoryCache cache)
+        public CustomLocationRepository(InMemoryCachingDbContext context, CacheManager cache, IConfiguration configuration)
         {
             _context = context;
             _cache = cache;
+            _configuration = configuration;
+
+            // Read the cache expiration durations with default fallbacks.
+            _CacheAbsoluteDurationMinutes = _configuration.GetValue<int?>("CacheSettings:AbsoluteExpirationMinutes") ?? 30;
+
+            _CacheSlidingDurationMinutes = _configuration.GetValue<int?>("CacheSettings:SlidingExpirationMinutes") ?? 30;
         }
 
         // Retrieves all countries from the database, with caching.
@@ -41,10 +53,17 @@ namespace InMemoryCachingExecution.Repository
                     .AsNoTracking() // Improves performance for read-only queries
                     .ToListAsync();
 
+                // Set cache entry options with high priority.
+                var cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetPriority(CacheItemPriority.High); // Countries are considered critical data.
+
                 // Set the cache with the fetched data.
                 // Manual eviction means: do not set any expiration time
-                // _cache.Set(cacheKey, countries, _cacheExpiration); // with expiration (Normally)
-                _cache.Set("countries", countries); // without expiration
+                // _cache.Set(cacheKey, countries, _cacheExpiration); // with expiration
+                // _cache.Set("countries", countries); // without expiration
+
+                // Cache the countries without explicit expiration.
+                _cache.Set(cacheKey, countries, cacheEntryOptions);
             }
 
             // Returns the cached or fresh data.
@@ -52,7 +71,8 @@ namespace InMemoryCachingExecution.Repository
 
         }
 
-        // Method to remove countries from the cache manually
+        // Removes the countries cache entry.
+        // This is useful after any data modification.
         public void RemoveCountriesFromCache()
         {
             var cacheKey = "countries";
@@ -68,6 +88,7 @@ namespace InMemoryCachingExecution.Repository
 
             await _context.SaveChangesAsync();
 
+            // Clear cache so that subsequent reads get fresh data.
             RemoveCountriesFromCache();
 
         }
@@ -79,6 +100,7 @@ namespace InMemoryCachingExecution.Repository
 
             await _context.SaveChangesAsync();
 
+            // Clear cache after update.
             RemoveCountriesFromCache();
 
         }
@@ -87,7 +109,6 @@ namespace InMemoryCachingExecution.Repository
         // 2. Sliding Expiration for States
         public async Task<List<State>> GetAllStatesAsync(int countryId)
         {
-
             // Unique cache key for states based on country ID.
             var cacheKey = $"States_{countryId}";
 
@@ -101,10 +122,8 @@ namespace InMemoryCachingExecution.Repository
                     .ToListAsync();
 
                 // Configure sliding expiration
-                var cacheEntryOptions = new MemoryCacheEntryOptions().SetSlidingExpiration(TimeSpan.FromSeconds(10));
-
-                // Set the cache with the fetched data. (Normally)
-                // _cache.Set(cacheKey, states, _cacheExpiration);
+                var cacheEntryOptions = new MemoryCacheEntryOptions().SetSlidingExpiration(TimeSpan.FromSeconds(_CacheSlidingDurationMinutes))
+                    .SetPriority(CacheItemPriority.Normal);
 
                 // Set the cache with the fetched data and expiration time.
                 _cache.Set(cacheKey, states, cacheEntryOptions);
@@ -132,15 +151,13 @@ namespace InMemoryCachingExecution.Repository
                     .ToListAsync();
 
                 // Configure absolute expiration
-                var cacheEntryOptions = new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromSeconds(10));
-
-                // Set the cache with the fetched data. (Normally)
-                // _cache.Set(cacheKey, cities, _cacheExpiration);
+                var cacheEntryOptions = new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromSeconds(_CacheAbsoluteDurationMinutes))
+                    .SetPriority(CacheItemPriority.Low);
 
                 // Set the cache with the fetched data and expiration time.
                 _cache.Set(cacheKey, cities, cacheEntryOptions);
             }
-            
+
             // Returns the cached or fresh data.
             return cities ?? new List<City>();
         }
